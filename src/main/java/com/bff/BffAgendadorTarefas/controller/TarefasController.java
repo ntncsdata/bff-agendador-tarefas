@@ -27,7 +27,6 @@ public class TarefasController {
     private final TarefasService tarefasService;
 
 
-
     @PostMapping
     @Operation(summary = "Salvar tarefas de usuários", description = "Cria uma nova tarefa")
     @ApiResponse(responseCode = "200", description = "Tarefa salva com sucesso")
