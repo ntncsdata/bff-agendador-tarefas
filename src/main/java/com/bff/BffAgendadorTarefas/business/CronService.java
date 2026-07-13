@@ -22,42 +22,52 @@ public class CronService {
     public final EmailService emailService;
     public final UsuarioService usuarioService;
 
-    @Value("{usuario.email}")
+    @Value("${usuario.email}")
     private String email;
 
-    @Value("{usuario.senha}")
+    @Value("${usuario.senha}")
     private String senha;
 
     @Scheduled(cron = "${cron.horario}")
-    public void buscaTarefaProximaHora(){
-        String token = login(converterParaDTORequest());
+    public void buscaTarefaProximaHora() {
         log.info("Iniciada a busca de tarefas");
+
+        String token;
+        try {
+            token = usuarioService.loginUsuario(
+                    LoginDTORequest.builder().email(email).senha(senha).build());
+        } catch (Exception e) {
+            log.error("Falha no login do usuário técnico do cron", e);
+            return;
+        }
+
         LocalDateTime horaAtual = LocalDateTime.now();
-        LocalDateTime horaFutura = LocalDateTime.now().plusHours(1);
+        LocalDateTime horaFutura = horaAtual.plusHours(1);
 
-        List<TarefasDTOResponse> listaDeTarefas = tarefasService.buscaTarefasAgendadasPorPeriodo(horaAtual,
-                                                                                                 horaFutura,
-                                                                                                 token);
-        log.info("Tarefas encontradas" + listaDeTarefas);
+        List<TarefasDTOResponse> tarefas;
+        try {
+            tarefas = tarefasService.buscaTarefasAgendadasPorPeriodo(horaAtual, horaFutura, token);
+        } catch (Exception e) {
+            log.error("Falha ao buscar tarefas do período", e);
+            return;
+        }
 
-        listaDeTarefas.forEach(tarefa -> {
-            emailService.enviaEmail(tarefa);
-            log.info("Email enviado para o usuario" + tarefa.getEmailUsuario());
-            tarefasService.alteraStatus(StatusNotificacaoEnum.NOTIFICADO, tarefa.getId(),
-                    token);
-        });
+        log.info("Tarefas encontradas: {}", tarefas.size());
+
+        for (TarefasDTOResponse tarefa : tarefas) {
+            if (tarefa.getStatusNotificacaoEnum() != StatusNotificacaoEnum.PENDENTE) {
+                continue;
+            }
+            try {
+                emailService.enviaEmail(tarefa);
+                tarefasService.alteraStatus(StatusNotificacaoEnum.NOTIFICADO, tarefa.getId(), token);
+                log.info("Email enviado para {}", tarefa.getEmailUsuario());
+            } catch (Exception e) {
+                log.error("Falha ao notificar a tarefa {}", tarefa.getId(), e);
+            }
+        }
+
         log.info("Finalizada a busca e notificação de tarefas");
-    }
-
-    public String login(LoginDTORequest dto){
-        return usuarioService.loginUsuario(dto);
-    }
-
-    public LoginDTORequest converterParaDTORequest(){
-        return LoginDTORequest.builder()
-                .email(email)
-                .senha(senha)
-                .build();
     }
 
 
